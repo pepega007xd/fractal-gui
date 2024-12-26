@@ -1,6 +1,7 @@
 precision highp float;
 
 uniform vec2 center;
+uniform vec2 window_offset;
 uniform float zoom;
 uniform vec2 resolution;
 uniform int cycles;
@@ -8,11 +9,12 @@ uniform int cycles;
 out vec4 fragColor;
 
 void main() {
-    vec2 pos = (gl_FragCoord.xy / resolution) - 0.5;
+    vec2 pixel_pos = gl_FragCoord.xy / 2.; // ???
+    vec2 pos = ((pixel_pos - window_offset) / resolution) - 0.5;
     pos /= zoom; // scale pos according to `zoom`
     pos += center; // shift center acc to zoom
     pos.y *= resolution.y / resolution.x; // fix squishing in non-square aspect ratio
-    
+
     vec2 z = pos;
     float color = 0.;
 

@@ -1,10 +1,8 @@
-use egui::{mutex::Mutex, Event, Id, Pos2, Rect, Sense, Slider, Vec2};
-use std::{ops::Range, sync::Arc};
+use egui::{mutex::Mutex, Event, Id, Pos2, Sense, Slider};
+use log::log;
+use std::sync::Arc;
 
 use crate::renderer::*;
-
-#[derive(serde::Deserialize, serde::Serialize, Default)]
-pub struct TemplateApp();
 
 pub struct App {
     /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
@@ -24,6 +22,7 @@ impl App {
                 center: (0., 0.),
                 zoom: 1.,
                 resolution: (1., 1.),
+                window_offset: (0., 0.),
                 cycles: 100,
             },
         }
@@ -51,46 +50,71 @@ impl eframe::App for App {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                // adjust position by dragging
-                let max_rect = ui.max_rect();
-                let rect_size = max_rect.size();
-                let drag = ui
-                    .interact(max_rect, Id::new(0), Sense::drag())
-                    .drag_delta()
-                    / rect_size;
-                self.uniform_data.resolution = (rect_size.x, rect_size.y);
-                self.uniform_data.center.0 -= drag.x / self.uniform_data.zoom;
-                self.uniform_data.center.1 += drag.y / self.uniform_data.zoom;
+            // adjust position by dragging
+            let max_rect = ui.max_rect();
+            let rect_size = max_rect.size();
+            let drag = ui
+                .interact(max_rect, Id::new(0), Sense::click_and_drag())
+                .drag_delta()
+                / rect_size;
+            self.uniform_data.resolution = rect_size.into();
+            self.uniform_data.window_offset = max_rect.left_top().into();
+            self.uniform_data.center.0 -= drag.x / self.uniform_data.zoom;
+            self.uniform_data.center.1 += drag.y / self.uniform_data.zoom;
 
-                // calculate mouse pointer location in fractal coordinates
-                let pointer = ctx.pointer_latest_pos().unwrap_or(Pos2::default());
+            let screen_to_fractal_coords = |pos: Pos2| {
+                let pos = (pos - max_rect.left_top()) / rect_size;
+                let pos = pos - (0.5, 0.5).into();
+                let pos = pos / self.uniform_data.zoom;
+                Pos2::new(
+                    pos.x + self.uniform_data.center.0,
+                    -pos.y + self.uniform_data.center.1,
+                )
+            };
 
-                let pointer = (pointer - Pos2::ZERO) / (max_rect.size());
-                let pointer = (pointer - (0.5, 0.5).into()) / self.uniform_data.zoom;
-                println!("{}  {}", pointer.x, pointer.y);
+            // calculate mouse pointer location in fractal coordinates
+            let pointer = ctx.pointer_latest_pos().unwrap_or(Pos2::default());
+            let pointer = screen_to_fractal_coords(pointer);
 
-                // adjust zoom by scrolling
-                ctx.input(|e| {
-                    e.events.iter().for_each(|e| {
-                        if let Event::Scroll(s) = e {
-                            let zoom_scale = 0.01;
-                            let scroll = s.y;
-
-                            self.uniform_data.zoom *= 1. - (scroll * zoom_scale);
-                            self.uniform_data.center.0 -= scroll * pointer.x * zoom_scale;
-                            self.uniform_data.center.1 += scroll * pointer.y * zoom_scale;
-                        }
-                        // for touchscreens maybe?
-                        if let Event::Zoom(z) = e {
-                            self.uniform_data.zoom *= 1. + (z * 0.01);
-                        }
-                    })
-                });
-
-                // canvas for drawing the fractal itself
-                self.custom_painting(ui);
+            egui::Window::new("Debug").show(ctx, |ui| {
+                ui.heading(format!("drag: {drag}"));
+                ui.heading(format!("max_rect: {max_rect}"));
+                ui.heading(format!("rect_size: {rect_size}"));
+                let pointer_pos = ctx.pointer_latest_pos().unwrap_or(Pos2::default());
+                ui.heading(format!("pointer_pos: {pointer_pos}"));
+                ui.heading(format!("pointer: {pointer}"));
+                ui.heading(format!("uniform_data: {:#?}", self.uniform_data));
             });
+
+            // adjust zoom by scrolling
+            ctx.input(|e| {
+                e.events.iter().for_each(|e| {
+                    // if let Event::MouseWheel {
+                    //     unit: _,
+                    //     delta,
+                    //     modifiers: _,
+                    // } = e
+                    // {
+                    //     let scroll = delta.y * -10.;
+                    //     let zoom_scale = 0.01;
+                    //
+                    //     self.uniform_data.center.0 -= scroll * pointer.x * zoom_scale;
+                    //     self.uniform_data.center.1 += scroll * pointer.y * zoom_scale;
+                    //     self.uniform_data.zoom *= 1. - (scroll * zoom_scale);
+                    // }
+                    // for touchscreens maybe?
+                    if let Event::Zoom(zoom) = e {
+                        self.uniform_data.zoom *= zoom;
+                        self.uniform_data.center.0 +=
+                            (pointer.x - self.uniform_data.center.0) * (zoom - 1.);
+                        self.uniform_data.center.1 +=
+                            (pointer.y - self.uniform_data.center.1) * (zoom - 1.);
+                    }
+                })
+            });
+
+            // canvas for drawing the fractal itself
+            self.custom_painting(ui);
         });
     }
 

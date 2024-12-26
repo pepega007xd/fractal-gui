@@ -1,8 +1,9 @@
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct UniformData {
     pub center: (f32, f32),
     pub zoom: f32,
     pub resolution: (f32, f32),
+    pub window_offset: (f32, f32),
     pub cycles: i32,
 }
 
@@ -118,6 +119,13 @@ impl Renderer {
                 gl.get_uniform_location(self.program, "resolution").as_ref(),
                 uniform_data.resolution.0,
                 uniform_data.resolution.1,
+            );
+
+            gl.uniform_2_f32(
+                gl.get_uniform_location(self.program, "window_offset")
+                    .as_ref(),
+                uniform_data.window_offset.0,
+                uniform_data.window_offset.1,
             );
 
             gl.bind_vertex_array(Some(self.vertex_array));
