@@ -9,8 +9,7 @@ uniform int cycles;
 out vec4 fragColor;
 
 void main() {
-    vec2 pixel_pos = gl_FragCoord.xy; // ???
-    vec2 pos = ((pixel_pos - window_offset) / resolution) - 0.5;
+    vec2 pos = ((gl_FragCoord.xy - window_offset) / resolution) - 0.5;
     pos.y *= -1.; // invert Y axis (opengl has 0,0 at bottom left corner, egui at top left)
     pos += center; // shift center acc to zoom
     pos /= zoom; // scale pos according to `zoom`
