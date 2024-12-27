@@ -11,8 +11,8 @@ out vec4 fragColor;
 void main() {
     vec2 pixel_pos = gl_FragCoord.xy / 2.; // ???
     vec2 pos = ((pixel_pos - window_offset) / resolution) - 0.5;
-    pos /= zoom; // scale pos according to `zoom`
     pos += center; // shift center acc to zoom
+    pos /= zoom; // scale pos according to `zoom`
     pos.y *= resolution.y / resolution.x; // fix squishing in non-square aspect ratio
 
     vec2 z = pos;
