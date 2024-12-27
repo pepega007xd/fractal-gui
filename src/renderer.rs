@@ -1,9 +1,11 @@
+use egui::Vec2;
+
 #[derive(Clone, Copy, Debug)]
 pub struct UniformData {
-    pub center: (f32, f32),
+    pub center: Vec2,
     pub zoom: f32,
-    pub resolution: (f32, f32),
-    pub window_offset: (f32, f32),
+    pub resolution: Vec2,
+    pub window_offset: Vec2,
     pub cycles: i32,
 }
 
@@ -104,8 +106,8 @@ impl Renderer {
             gl.use_program(Some(self.program));
             gl.uniform_2_f32(
                 gl.get_uniform_location(self.program, "center").as_ref(),
-                uniform_data.center.0,
-                uniform_data.center.1,
+                uniform_data.center.x,
+                uniform_data.center.y,
             );
             gl.uniform_1_i32(
                 gl.get_uniform_location(self.program, "cycles").as_ref(),
@@ -117,15 +119,15 @@ impl Renderer {
             );
             gl.uniform_2_f32(
                 gl.get_uniform_location(self.program, "resolution").as_ref(),
-                uniform_data.resolution.0,
-                uniform_data.resolution.1,
+                uniform_data.resolution.x,
+                uniform_data.resolution.y,
             );
 
             gl.uniform_2_f32(
                 gl.get_uniform_location(self.program, "window_offset")
                     .as_ref(),
-                uniform_data.window_offset.0,
-                uniform_data.window_offset.1,
+                uniform_data.window_offset.x,
+                uniform_data.window_offset.y,
             );
 
             gl.bind_vertex_array(Some(self.vertex_array));
