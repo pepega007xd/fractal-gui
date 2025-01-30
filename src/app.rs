@@ -1,7 +1,21 @@
-use egui::{mutex::Mutex, Id, Pos2, Sense, Slider};
-use std::sync::Arc;
+use egui::{
+    color_picker, epaint::Hsva, mutex::Mutex, vec2, ColorImage, Id, ImageSource, PaintCallback,
+    Pos2, Rect, Sense, Slider, Vec2,
+};
+use std::{fs::File, io::Write, sync::Arc};
 
 use crate::renderer::*;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UniformData {
+    pub center: Vec2,
+    pub zoom: f32,
+    pub resolution: Vec2,
+    pub window_offset: Vec2,
+    pub cycles: i32,
+    pub start_color: Hsva,
+    pub end_color: Hsva,
+}
 
 pub struct App {
     /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
@@ -18,67 +32,86 @@ impl App {
         Self {
             renderer: Arc::new(Mutex::new(Renderer::new(gl))),
             uniform_data: UniformData {
-                center: (0., 0.).into(),
-                zoom: 1.,
-                resolution: (1., 1.).into(),
-                window_offset: (0., 0.).into(),
+                zoom: 0.2,
                 cycles: 100,
+                start_color: Hsva::new(1., 0., 1., 1.),
+                end_color: Hsva::new(0., 0., 0., 1.),
+                ..Default::default()
             },
         }
-    }
-
-    fn custom_painting(&mut self, ui: &mut egui::Ui) {
-        // Clone locals so we can move them into the paint callback
-        let renderer = self.renderer.clone();
-        let uniform_data = self.uniform_data.clone();
-
-        let callback = egui::PaintCallback {
-            rect: ui.max_rect(),
-            callback: Arc::new(egui_glow::CallbackFn::new(move |_, painter| {
-                renderer.lock().paint(painter.gl(), uniform_data);
-            })),
-        };
-        ui.painter().add(callback);
     }
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::SidePanel::new(egui::panel::Side::Left, "side_panel").show(ctx, |ui| {
-            ui.add(Slider::new(&mut self.uniform_data.cycles, 1..=500));
+            ui.heading("Settings");
+            ui.label("Iterations");
+            ui.add(Slider::new(&mut self.uniform_data.cycles, 1..=5000).logarithmic(true));
+            ui.separator();
+
+            ui.label("Start Color");
+            color_picker::color_edit_button_hsva(
+                ui,
+                &mut self.uniform_data.start_color,
+                color_picker::Alpha::Opaque,
+            );
+            ui.separator();
+
+            ui.label("End Color");
+            color_picker::color_edit_button_hsva(
+                ui,
+                &mut self.uniform_data.end_color,
+                color_picker::Alpha::Opaque,
+            );
+            ui.separator();
+
+            if ui.button("Take screenshot").clicked() {
+                let renderer = self.renderer.clone();
+                let uniform_data = self.uniform_data.clone();
+
+                let (width, height) = (
+                    uniform_data.resolution.x as u32,
+                    uniform_data.resolution.y as u32,
+                );
+                let output = renderer.lock().render_to_buffer(
+                    frame.gl().unwrap(),
+                    width,
+                    height,
+                    uniform_data,
+                );
+                let mut file = File::create("./output.ppm").unwrap();
+                writeln!(file, "P6").unwrap();
+                println!("{} {}", width, height);
+                writeln!(file, "{} {}", width, height).unwrap();
+                writeln!(file, "255").unwrap();
+                for rgba in output.chunks_exact(4) {
+                    file.write(&rgba[..3]).unwrap();
+                }
+            };
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // adjust position by dragging
-            let max_rect = ui.max_rect();
-            let uniform_data = self.uniform_data;
-            let rect_size = max_rect.size();
-            let drag = ui
-                .interact(max_rect, Id::new(0), Sense::click_and_drag())
-                .drag_delta()
-                / rect_size;
+            let (fractal_rect, response) =
+                ui.allocate_exact_size((500., 500.).into(), Sense::drag());
+            let rect_size = fractal_rect.size();
+            let drag = response.drag_delta() / rect_size;
 
             let ppp = ctx.pixels_per_point();
 
             self.uniform_data.resolution = (rect_size * ppp).into();
-            self.uniform_data.window_offset = (max_rect.left_top() * ppp).to_vec2();
+            self.uniform_data.window_offset = (fractal_rect.left_top() * ppp).to_vec2();
             self.uniform_data.center -= drag;
 
+            let center = self.uniform_data.center;
+            let mut window_correction =
+                ctx.screen_rect().left_bottom() - fractal_rect.left_bottom();
+            window_correction.x *= -1.;
             let screen_to_fractal_coords = |pos: Pos2| {
-                let pos = (pos - max_rect.left_top()) / rect_size;
-                let pos = pos - (0.5, 0.5).into();
-                pos + uniform_data.center
+                let pos = (pos.to_vec2() - window_correction) / rect_size;
+                let pos = pos - vec2(0.5, 0.5);
+                pos + center
             };
-
-            // egui::Window::new("Debug").show(ctx, |ui| {
-            //     ui.heading(format!("drag: {drag}"));
-            //     ui.heading(format!("max_rect: {max_rect}"));
-            //     ui.heading(format!("rect_size: {rect_size}"));
-            //     let pointer_pos = ctx.pointer_latest_pos();
-            //     ui.heading(format!("pointer_pos: {pointer_pos:?}"));
-            //     ui.heading(format!("pointer: {pointer:?}"));
-            //     ui.heading(format!("uniform_data: {:#?}", self.uniform_data));
-            // });
 
             ctx.input(|e| {
                 let zoom = e.zoom_delta();
@@ -89,7 +122,16 @@ impl eframe::App for App {
                 }
             });
 
-            self.custom_painting(ui);
+            let renderer = self.renderer.clone();
+            let uniform_data = self.uniform_data.clone();
+
+            let callback = egui::PaintCallback {
+                rect: fractal_rect,
+                callback: Arc::new(egui_glow::CallbackFn::new(move |_, painter| {
+                    renderer.lock().paint(painter.gl(), uniform_data);
+                })),
+            };
+            ui.painter().add(callback);
         });
     }
 
