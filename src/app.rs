@@ -1,5 +1,6 @@
 use egui::{
-    color_picker, epaint::Hsva, mutex::Mutex, vec2, Color32, DragValue, Pos2, Sense, Slider, Vec2,
+    color_picker, epaint::Hsva, mutex::Mutex, vec2, Color32, DragValue, Id, Pos2, Sense, Slider,
+    Vec2,
 };
 use std::{fs::File, io::Write, sync::Arc};
 
@@ -40,6 +41,7 @@ pub struct App {
     julia_coefficient: Vec2,
     custom_fractal_function: String,
     shader_error: Option<String>,
+    settings_shown: bool,
 }
 
 impl App {
@@ -63,6 +65,7 @@ impl App {
             fractal_type: FractalType::Mandelbrot,
             julia_coefficient: Vec2::ZERO,
             shader_error: None,
+            settings_shown: true,
         }
     }
 }
@@ -115,103 +118,120 @@ fn save_image(pixels_rgba: &[u8], width: u32, height: u32) {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        egui::SidePanel::new(egui::panel::Side::Left, "side_panel").show(ctx, |ui| {
-            ui.heading("Settings");
-            ui.label("Iterations");
-            ui.add(Slider::new(&mut self.uniform_data.cycles, 1..=5000).logarithmic(true));
-            ui.separator();
-
-            ui.label("Start Color");
-            color_picker::color_edit_button_hsva(
-                ui,
-                &mut self.uniform_data.start_color,
-                color_picker::Alpha::Opaque,
-            );
-            ui.separator();
-
-            ui.label("End Color");
-            color_picker::color_edit_button_hsva(
-                ui,
-                &mut self.uniform_data.end_color,
-                color_picker::Alpha::Opaque,
-            );
-            ui.separator();
-
-            ui.label("Aspect ratio");
-            match () {
-                _ if ui.radio(self.aspect_ratio.is_none(), "dynamic").clicked() => {
-                    self.aspect_ratio = None
+        if !self.settings_shown {
+            egui::Area::new(Id::new("settings_button")).show(ctx, |ui| {
+                if ui.button("open settings").clicked() {
+                    self.settings_shown = true;
                 }
-                _ if ui
-                    .radio(self.aspect_ratio == Some(16. / 9.), "16:9")
-                    .clicked() =>
-                {
-                    self.aspect_ratio = Some(16. / 9.)
+            });
+        }
+
+        egui::SidePanel::new(egui::panel::Side::Left, "side_panel").show_animated(
+            ctx,
+            self.settings_shown,
+            |ui| {
+                ui.heading("Settings");
+                if ui.button("hide").clicked() {
+                    self.settings_shown = false;
                 }
-                _ => (),
-            }
-            ui.separator();
+                ui.separator();
 
-            ui.label("Fractal type");
-            if ui
-                .radio_value(
-                    &mut self.fractal_type,
-                    FractalType::Mandelbrot,
-                    "Mandelbrot",
-                )
-                .clicked()
-            {
-                let _ = self
-                    .renderer
-                    .lock()
-                    .set_fractal_function(renderer::MANDELBROT_FUNC);
-            }
+                ui.label("Iterations");
+                ui.add(Slider::new(&mut self.uniform_data.cycles, 1..=5000).logarithmic(true));
+                ui.separator();
 
-            if ui
-                .radio_value(&mut self.fractal_type, FractalType::Julia, "Julia set")
-                .clicked()
-            {
-                let _ = self
-                    .renderer
-                    .lock()
-                    .set_fractal_function(renderer::JULIA_FUNC);
-            };
-
-            ui.radio_value(&mut self.fractal_type, FractalType::Custom, "Custom");
-
-            ui.separator();
-
-            if let FractalType::Julia = self.fractal_type {
-                ui.label("Julia set constant");
-
-                let range = (-2.0)..=(2.0);
-                ui.add(
-                    DragValue::new(&mut self.julia_coefficient.x)
-                        .range(range.clone())
-                        .speed(0.01),
-                );
-                ui.add(
-                    DragValue::new(&mut self.julia_coefficient.y)
-                        .range(range)
-                        .speed(0.01),
+                ui.label("Start Color");
+                color_picker::color_edit_button_hsva(
+                    ui,
+                    &mut self.uniform_data.start_color,
+                    color_picker::Alpha::Opaque,
                 );
                 ui.separator();
-            }
 
-            if ui.button("Take screenshot").clicked() {
-                let uniform_data = self.uniform_data.clone();
-
-                let (width, height) = (
-                    uniform_data.resolution.x as u32,
-                    uniform_data.resolution.y as u32,
+                ui.label("End Color");
+                color_picker::color_edit_button_hsva(
+                    ui,
+                    &mut self.uniform_data.end_color,
+                    color_picker::Alpha::Opaque,
                 );
-                let output = self
-                    .renderer
-                    .lock()
-                    .render_to_buffer(width, height, uniform_data);
-                save_image(&output, width, height);
-            };
-        });
+                ui.separator();
+
+                ui.label("Aspect ratio");
+                match () {
+                    _ if ui.radio(self.aspect_ratio.is_none(), "dynamic").clicked() => {
+                        self.aspect_ratio = None
+                    }
+                    _ if ui
+                        .radio(self.aspect_ratio == Some(16. / 9.), "16:9")
+                        .clicked() =>
+                    {
+                        self.aspect_ratio = Some(16. / 9.)
+                    }
+                    _ => (),
+                }
+                ui.separator();
+
+                ui.label("Fractal type");
+                if ui
+                    .radio_value(
+                        &mut self.fractal_type,
+                        FractalType::Mandelbrot,
+                        "Mandelbrot",
+                    )
+                    .clicked()
+                {
+                    let _ = self
+                        .renderer
+                        .lock()
+                        .set_fractal_function(renderer::MANDELBROT_FUNC);
+                }
+
+                if ui
+                    .radio_value(&mut self.fractal_type, FractalType::Julia, "Julia set")
+                    .clicked()
+                {
+                    let _ = self
+                        .renderer
+                        .lock()
+                        .set_fractal_function(renderer::JULIA_FUNC);
+                };
+
+                ui.radio_value(&mut self.fractal_type, FractalType::Custom, "Custom");
+
+                ui.separator();
+
+                if let FractalType::Julia = self.fractal_type {
+                    ui.label("Julia set constant");
+
+                    let range = (-2.0)..=(2.0);
+                    ui.add(
+                        DragValue::new(&mut self.julia_coefficient.x)
+                            .range(range.clone())
+                            .speed(0.01),
+                    );
+                    ui.add(
+                        DragValue::new(&mut self.julia_coefficient.y)
+                            .range(range)
+                            .speed(0.01),
+                    );
+                    ui.separator();
+                }
+
+                if ui.button("Take screenshot").clicked() {
+                    let uniform_data = self.uniform_data.clone();
+
+                    let (width, height) = (
+                        uniform_data.resolution.x as u32,
+                        uniform_data.resolution.y as u32,
+                    );
+                    let output = self
+                        .renderer
+                        .lock()
+                        .render_to_buffer(width, height, uniform_data);
+                    save_image(&output, width, height);
+                };
+            },
+        );
 
         if let FractalType::Custom = &mut self.fractal_type {
             egui::TopBottomPanel::new(
