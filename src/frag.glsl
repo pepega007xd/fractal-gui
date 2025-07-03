@@ -22,13 +22,7 @@ vec4 get_color(float param) {
     return vec4(hsv2rgb(mix(start_color, end_color, param)), 1.);
 }
 
-vec2 iteration(vec2 previous_z, vec2 original_z) {
-    vec2 z;
-    z.x = previous_z.x * previous_z.x - previous_z.y * previous_z.y + original_z.x;
-    z.y = 2. * previous_z.x * previous_z.y + original_z.y;
-
-    return z;
-}
+vec2 iteration(vec2 previous_z, vec2 original_z);
 
 void main() {
     vec2 pos = ((gl_FragCoord.xy - window_offset) / resolution) - 0.5;
